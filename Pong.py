@@ -25,6 +25,13 @@ size, current coords
 
 """
 
+serPort = Serial("/dev/ttyAMA0", 9600)
+
+if(serPort.isOpen() == False):
+	serPort.open()
+
+
+
 #Constants:
 
 const_room_width = 80
@@ -253,6 +260,7 @@ class GameState:
 			self._change[2] = []
 
 		####
+		serPort.write(self._buffer)
 
 class Ball:
 	def __init__(self, xspeed, yspeed, x, y, update_speed):
@@ -385,4 +393,4 @@ while(True):
 	#serialPort.write(game._buffer)
 	#time.sleep(0.1)
 
-#serialPort.close()
+serPort.close()
