@@ -4,8 +4,8 @@ import time
 
 class Adc():
     def __init__(self, bus, pin, dac):
-        self.I2C_DATA_ADDR = 0x38
-        self.I2C_ENABLED_ADDR = 0x39
+        self.I2C_DATA_ADDR = 0x20
+        self.I2C_ENABLED_ADDR = 0x3c
         self.DAC_EN = [0xBF, 0x7F]
 
         self.bus = bus
@@ -31,8 +31,8 @@ class Adc():
     def update (self, value):
         try:
             self.bus.write_byte (self.I2C_DATA_ADDR, value)
-            self.bus.write_byte (self.I2C_ENABLE_ADDR, self.DAC_EN[self.dac])
-            self.bus.write_byte (self.I2C_ENABLE_ADDR, 255)  # Clear port after sending data
+            self.bus.write_byte (self.I2C_ENABLED_ADDR, self.DAC_EN[self.dac])
+            self.bus.write_byte (self.I2C_ENABLED_ADDR, 255)  # Clear port after sending data
         except IOError:
             print ("Another Comms err")
 
@@ -53,6 +53,20 @@ class Adc():
 
         return count
 
+    def ramp (self):
+        count = 0
+        self.update (0)
+
+        for i in range (0,255):
+            #if self.get_comp() == False:
+            if True:
+                print ("Count has called")
+                count += 1
+                self.update (i)
+            else:
+                break
+        return count
+
 
 def main ():
     bus = smbus.SMBus (1)
@@ -60,7 +74,8 @@ def main ():
     adc = Adc (bus, 25, 1)
 
     while True:
-        value = adc.approx ()
+        #value = adc.approx ()
+        value = adc.ramp()
 
         if value > 160:
             print (value)
