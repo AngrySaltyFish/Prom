@@ -2,42 +2,20 @@ import os
 import sys
 import time
 import random
+import math
+import RPi.GPIO as GPIO
 from serial import Serial
 
 #so that testing can be done on windows:
 #from colorama import init
 #init()
 
-
-"""
-Plan:
-
-GameState class:
-initialize game state, height, width, refresh speed, colours..
-
-Ball class:
-moves the ball/ controls the properties of the ball, e.g. speed, coords
-ball will be only object checking for collisions. Check for collision every step
-
-Player class:
-controls the bat properties
-size, current coords
-
-"""
-
-serPort = Serial("/dev/ttyAMA0", 9600)
-
-if(serPort.isOpen() == False):
-	serPort.open()
-
-
-
 #Constants:
 
 const_room_width = 80
 const_room_height = 24
 const_net_x = 40
-const_update_speed = 0.05
+const_update_speed = 0.04
 const_back_col = str(chr(27)) + "[47m"
 const_net_col = str(chr(27)) + "[44m"
 const_ball_col = str(chr(27)) + "[41m"
@@ -48,11 +26,85 @@ const_bat_offset = 4
 const_score_offset = 8
 ####
 
+
+##GPIO tests##
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+i=0
+
+i+=1
+print(i)
+GPIO.setup(5,GPIO.OUT)#LED 1
+GPIO.output(5,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(5,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(7,GPIO.OUT)#LED 1
+GPIO.output(7,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(7,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(12,GPIO.OUT)#LED 3
+GPIO.output(12,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(12,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(13,GPIO.OUT)#LED 4
+GPIO.output(13,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(13,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(16,GPIO.OUT)#LED 5
+GPIO.output(16,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(16,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(19,GPIO.OUT)#LED 6
+GPIO.output(19,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(19,GPIO.LOW)
+time.sleep(0.5)
+
+i+=1
+print(i)
+GPIO.setup(26,GPIO.OUT)#LED 8
+GPIO.output(26,GPIO.HIGH)
+time.sleep(0.5)
+GPIO.output(26,GPIO.LOW)
+time.sleep(0.5)
+
+for j in range(3, 40):
+	if(j==28 or j==29 or j==32 or j==33 or j==35 or j==36 or j==37 or j==38 or j==40):
+		print(j)
+		GPIO.setup(j,GPIO.OUT)#LED 8
+		GPIO.output(j,GPIO.HIGH)
+		time.sleep(0.5)
+		GPIO.output(j,GPIO.LOW)
+		time.sleep(0.5)
+
+
 # Open Pi serial port, speed 9600 bits per second
-#erialPort = Serial("/dev/ttyAMA0", 9600)
+serialPort = Serial("/dev/ttyAMA0", 9600)
 # Should not need, but just in case
-#if (serialPort.isOpen() == False):
-#	serialPort.open()
+if (serialPort.isOpen() == False):
+	serialPort.open()
 
 
 class GameState:
@@ -90,75 +142,69 @@ class GameState:
 			"9": ["111","101","111","001","001"]
 		}
 
-		#test#
-		sys.stdout.write(str(chr(27)) + "[=14h")
+		#Coordinate System#
+		self._display = [[0 for i in range(room_height)] for j in range(room_width)]
+		self._displayVals = {
+			0: self._backCol,
+			1: self._netCol,
+			2: self._ballCol,
+			3: self._batCol,
+			4: self._numCol
+		}
+		self._displayCols = {
+			self._backCol: 0,
+			self._netCol: 1,
+			self._ballCol: 2,
+			self._batCol: 3,
+			self._numCol: 4
+		}
 
 		#Create a dictionary that will hold any positional changes of the objects, e.g. the bats or ball
-		self._change = {}
-
-		self._change["Ball"] = []
-		self._change["Net"] = []
-		self._change["Score"] = [1, 0]
-		#_change[1] and _change[2] will be the two different player IDs
-		self._change[1] = []
-		self._change[2] = []
+		self._change = {
+			"Ball": [],
+			"Net": [],
+			"Score": [],
+			"Player1": [],
+			"Player2": []
+		}
 
 		####Initially create game display:####
+		sys.stdout.write(chr(27) + "[2J")
+		#Draw background:
+		for i in range(self._height+1):
+			for j in range(self._width):
+				self.write(i, j, self._backCol + " ")
+			sys.stdout.write(str(chr(27)) + "[0m")	#Prints new line
+			self._buffer += str(chr(27)) + "[0m"
+
+
 		####DRAW SCORE####
 		self.update_score(1, 0)
 		self.update_score(2, 0)
 
-		#Draw background:
-		for i in range(self._height):
-			for j in range(self._width):
-				sys.stdout.write(self._backCol + " ")
-			print(str(chr(27)) + "[0m")	#Prints new line
-
-		#Draw net:
-		count = -1
-		switch = 0
-		for i in range(self._height+1):
-			#Set net colour on every other twos
-			if(switch):
-				self.write(i, self._netX, self._netCol)
-
-			count+=1
-			if(count > 1):
-				count = 0
-				switch ^= 1
+		##draw net
+		for i in range(1, const_room_height+1):
+			if(math.floor((i+1)/2) % 2 == 0):
+				self.write(i, const_net_x, const_net_col)
 
 	def write_change(self, ID, arr):
 		self._change[ID] = arr
 
 	#This function moves the cursor to position and then writes the desired colour
 	def write(self, x, y, col):
-		if(x<0): x=0
-		if(x>self._height): x=self._height
+		if(x<0): return
+		if(x>self._height): return
 
 		string = str(chr(27)) + "["+str(x)+";"+str(y)+"H" + col + " "
 		self._buffer += string
 
 		sys.stdout.write(string)
-		#sys.stdout.write(col + " ")
 		sys.stdout.flush()
 
-	def update_net(self):
-		#Could be optimised!!
-
+	def update_net(self, y):
 		#Draw net:
-		count = -1
-		switch = 0
-		for i in range(self._height+1):
-			#Set net colour on every other twos
-			if(switch):
-				self.write(i, self._netX, self._netCol)
-
-			count+=1
-			if(count > 1):
-				count = 0
-				switch ^= 1
-
-	#def update_bat(self, ID, newY, prevY, batSize):
+		if(math.floor((y+1)/2) % 2 == 0):
+			self.write(y+1, const_net_x, const_net_col)
 
 	def update_score(self, ID, score):
 		y=1
@@ -179,40 +225,31 @@ class GameState:
 		else:
 			num = self._numbers[str(score)]
 			for line in num:
-				x=2
+				x=0
 				y += 1
 				for val in line:
-					x-=1
+					x+=1
 					if(int(val)):
-						self.write(y, self._netX + const_score_offset - x + 2, self._numCol)
+						self.write(y, self._netX + const_score_offset + x, self._numCol)
 					else:
-						self.write(y, self._netX + const_score_offset - x + 2, self._backCol)
+						self.write(y, self._netX + const_score_offset + x, self._backCol)
 
 		#else:
 
 
-	def update_image(self):
+	def update_image(self, bat1Score, bat2Score):
 		#Sleep for update speed:
 		time.sleep(self._updateSpeed)
 
-		self._buffer = ""
-
 		#Update sequence is least important(lowest depth) to most, e.g. net first then ball, this way
 		#the ball will be drawn over the net.
-
-		####Update net####
-		arr = self._change["Net"]
-		if(arr):
-			self.update_net()
-			self._change["Net"] = []
-		####
 
 		####UPDATE SCORE####
 		arr = self._change["Score"]
 
 		if(arr):
 			self.update_score(arr[0], arr[1])
-			self._change["score"] = []
+			self._change["Score"] = []
 
 		####Update ball####
 		#Create a temporary array:
@@ -220,13 +257,42 @@ class GameState:
 
 		#If the array is not empty, then
 		if(arr):
-			#Move cursor to new coords:
-			self.write(arr[0], arr[1], self._ballCol)
-			#Move cursor to old coords:
-			self.write(arr[2], arr[3], self._backCol)
+			x = arr[0]
+			y = arr[1]
+			px = arr[2]
+			py = arr[3]
 
+			#Move cursor to new coords:
+			self.write(x, y, self._ballCol)
+			#Move cursor to old coords:
+			sOff1 = self._netX - const_score_offset - 4
+			sOff2 = self._netX + const_score_offset
+
+			if(px<7 and px>1):
+				if(py > sOff1 and py < sOff1+4):
+					#print(py - sOff1-1)
+					if(self._numbers[str(bat1Score)][px-2][py - sOff1-1] == "1"):
+						self.write(px,py, self._numCol)
+					else:
+						self.write(px, py, self._backCol)
+				elif(py > sOff2 and py < sOff2+4):
+					if(self._numbers[str(bat2Score)][px-2][py - sOff2-1] == "1"):
+						self.write(px,py, self._numCol)
+					else:
+						self.write(px, py, self._backCol)
+				else:
+					self.write(px, py, self._backCol)
+			else:
+				self.write(px, py, self._backCol)
 			#Reset the ball changes:
 			self._change["Ball"] = []
+		####
+
+		####Update net####
+		arr = self._change["Net"]
+		if(arr):
+			self.update_net(arr[0])
+			self._change["Net"] = []
 		####
 
 		####Update bat1####
@@ -260,7 +326,6 @@ class GameState:
 			self._change[2] = []
 
 		####
-		serPort.write(self._buffer)
 
 class Ball:
 	def __init__(self, xspeed, yspeed, x, y, update_speed):
@@ -322,8 +387,8 @@ class Ball:
 				return
 			elif(x==1):
 				self.reset()
-				bat1.update_score()
-				game.write_change("Score", [1, bat1._score])
+				bat2.update_score()
+				game.write_change("Score", [2, bat2._score])
 				return
 		elif(x >= const_room_width-const_bat_offset-1):
 			if(x == const_room_width-const_bat_offset-1 and (y<=bat2._y+bat2._size and y>=bat2._y)):
@@ -331,12 +396,12 @@ class Ball:
 				return
 			elif(x == const_room_width-1):
 				self.reset()
-				bat2.update_score()
-				game.write_change("Score", [2, bat2._score])
+				bat1.update_score()
+				game.write_change("Score", [1, bat1._score])
 				return
 		#Net:
 		if(x == const_net_x-1 or x == const_net_x+1):
-			game.write_change("Net", 1)
+			game.write_change("Net", [y])
 
 
 class Player:
@@ -359,7 +424,7 @@ class Player:
 	def move(self, inp_port, game):
 		#direction = 1 #Will work out by the input from the controllers
 
-		if(const_room_height+1 > self._y+self._size and self._y > 0):
+		if(const_room_height+2 > self._y+self._size and self._y >= 0):
 			self._y+=self.dir
 			#time.sleep(0.1)
 			arr = [self._y, self.dir, self._size]
@@ -372,9 +437,9 @@ class Player:
 
 
 
-ball = Ball(1, 1, 10, 40, 2)
-bat1 = Player(1, 8, 8, const_bat_offset+1)
-bat2 = Player(2, 8, 8, const_bat_offset+1)
+ball = Ball(-1, 1, 10, 40, 2)
+bat1 = Player(1, 8, 4, const_bat_offset+1)
+bat2 = Player(2, 8, 4, const_bat_offset+1)
 
 game = GameState(const_room_height, const_room_width, const_net_x, const_update_speed, const_back_col, const_net_col, const_ball_col, const_bat_col, const_number_col)
 while(True):
@@ -386,11 +451,12 @@ while(True):
 	bat1.move(8000, game)
 	bat2.move(9000, game)
 
-	game.update_image()
+	game.update_image(bat1._score, bat2._score)
 
 	#input_string = serialPort.read()
 	#print "ASCII Value: " + str(ord(input_string))
-	#serialPort.write(game._buffer)
+	serialPort.write(game._buffer)
+	game._buffer = ""
 	#time.sleep(0.1)
 
-serPort.close()
+serialPort.close()
