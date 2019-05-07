@@ -27,10 +27,10 @@ const_score_offset = 8
 ####
 
 GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
 
 ##GPIO tests##
 """
-GPIO.setwarnings(False)
 
 i=0
 
@@ -57,11 +57,6 @@ GPIO.output(13,GPIO.HIGH)
 time.sleep(0.5)
 GPIO.output(13,GPIO.LOW)
 time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(16,GPIO.OUT)#LED 5
-GPIO.output(16,GPIO.HIGH)
 time.sleep(0.5)
 GPIO.output(16,GPIO.LOW)
 time.sleep(0.5)
@@ -425,6 +420,7 @@ class Player:
 			self._y+=self.dir
 
 def LED_output(port):
+        print (port)
 	ports = {
 		1: 7,
 		2: 12,
@@ -437,6 +433,8 @@ def LED_output(port):
 	}
 	GPIO.setup(ports[port],GPIO.OUT)
 	GPIO.output(ports[port],GPIO.HIGH)
+        time.sleep (0.1)
+	GPIO.output(ports[port],GPIO.LOW)
 
 
 ball = Ball(-1, 1, 10, 40, 2)
