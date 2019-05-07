@@ -375,11 +375,11 @@ class Ball:
 		#	return
 		if(self._serving>0):
 			if(self._serving == 1):
-				self.set_x(bat1.get_x())
+				self.set_x(bat1.get_y())
 				self.set_y(bat1.get_y()+1)
 			else:
-				self.set_x(bat2.get_x())
-				self.set_y(bat2.get_y()-1)
+				self.set_x(bat2.get_y())
+				self.set_y(bat2.-1)
 
 		#Walls or bats:
 		if(y == 1):
@@ -427,6 +427,8 @@ class Player:
 		self.dir = 1
 	def get_score(self):
 		return self._score
+	def get_y(self):
+		return self._y
 
 	def update_score(self):
 		self._score += 1
