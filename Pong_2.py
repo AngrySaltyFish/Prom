@@ -345,7 +345,7 @@ class Ball:
 		elif(direction=="h"):
 			self._xspeed *= -1
 
-	def reset(self, side):
+	def reset(self):
 		self._x = 10
 		self._y = 40
 
@@ -391,7 +391,6 @@ class Ball:
 				self.bounce("h")
 				return
 			elif(x==1):
-				self.reset(0)
 				self._serving = 1
 
 				bat2.update_score()
@@ -402,7 +401,6 @@ class Ball:
 				self.bounce("h")
 				return
 			elif(x == const_room_width-1):
-				self.reset(1)
 				self._serving = 2
 
 				bat1.update_score()
@@ -489,6 +487,7 @@ class Adc():
 
 def LED_output(port):
 	ports = {
+		0: 7,
 		1: 7,
 		2: 12,
 		3: 12,
@@ -503,7 +502,7 @@ def LED_output(port):
 	time.sleep(0.1)
 	GPIO.output(ports[port],GPIO.LOW)
 
-ball = Ball(-1, 1, 10, 40, 10)
+ball = Ball(-1, 1, 10, 40, 1)
 bat1 = Player(1, 8, 4, const_bat_offset+1)
 bat2 = Player(2, 8, 4, const_bat_offset+1)
 
