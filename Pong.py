@@ -26,21 +26,13 @@ const_bat_offset = 4
 const_score_offset = 8
 ####
 
+GPIO.setmode(GPIO.BCM)
 
 ##GPIO tests##
-
-GPIO.setmode(GPIO.BCM)
+"""
 GPIO.setwarnings(False)
 
 i=0
-
-i+=1
-print(i)
-GPIO.setup(5,GPIO.OUT)#LED 1
-GPIO.output(5,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(5,GPIO.LOW)
-time.sleep(0.5)
 
 i+=1
 print(i)
@@ -98,11 +90,11 @@ for j in range(3, 40):
 		time.sleep(0.5)
 		GPIO.output(j,GPIO.LOW)
 		time.sleep(0.5)
+"""
 
 
-# Open Pi serial port, speed 9600 bits per second
 serialPort = Serial("/dev/ttyAMA0", 9600)
-# Should not need, but just in case
+
 if (serialPort.isOpen() == False):
 	serialPort.open()
 
@@ -198,8 +190,8 @@ class GameState:
 		string = str(chr(27)) + "["+str(x)+";"+str(y)+"H" + col + " "
 		self._buffer += string
 
-		sys.stdout.write(string)
-		sys.stdout.flush()
+		#sys.stdout.write(string)
+		#sys.stdout.flush()
 
 	def update_net(self, y):
 		#Draw net:
@@ -233,8 +225,6 @@ class GameState:
 						self.write(y, self._netX + const_score_offset + x, self._numCol)
 					else:
 						self.write(y, self._netX + const_score_offset + x, self._backCol)
-
-		#else:
 
 
 	def update_image(self, bat1Score, bat2Score):
@@ -325,8 +315,6 @@ class GameState:
 
 			self._change[2] = []
 
-		####
-
 class Ball:
 	def __init__(self, xspeed, yspeed, x, y, update_speed):
 		self._xspeed = xspeed
@@ -403,6 +391,9 @@ class Ball:
 		if(x == const_net_x-1 or x == const_net_x+1):
 			game.write_change("Net", [y])
 
+	def get_relative_pos(self):
+		return round(float(self._y) / float(const_room_width)*8)
+
 
 class Player:
 	def __init__(self, ID, y, size, offset):
@@ -433,8 +424,19 @@ class Player:
 			self.dir *= -1
 			self._y+=self.dir
 
-
-
+def LED_output(port):
+	ports = {
+		1: 7,
+		2: 12,
+		3: 12,
+		4: 13,
+		5: 16,
+		6: 19,
+		7: 19,
+		8: 26
+	}
+	GPIO.setup(ports[port],GPIO.OUT)
+	GPIO.output(ports[port],GPIO.HIGH)
 
 
 ball = Ball(-1, 1, 10, 40, 2)
@@ -450,11 +452,12 @@ while(True):
 
 	bat1.move(8000, game)
 	bat2.move(9000, game)
-
 	game.update_image(bat1._score, bat2._score)
 
-	#input_string = serialPort.read()
-	#print "ASCII Value: " + str(ord(input_string))
+
+	LED_output(ball.get_relative_pos())
+
+
 	serialPort.write(game._buffer)
 	game._buffer = ""
 	#time.sleep(0.1)
