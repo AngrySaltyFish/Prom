@@ -542,7 +542,7 @@ def main ():
 		#LED output
 		LED_output(ball.get_relative_pos())
 
-		serialPort.write(game._buffer)
+		serialPort.write(game._buffer.encode("ascii"))
 		game._buffer = ""
 		#time.sleep(0.1)
 
