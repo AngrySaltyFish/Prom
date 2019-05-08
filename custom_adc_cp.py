@@ -4,7 +4,7 @@ import time
 
 class Adc():
     def __init__(self, bus, pin):
-        self.I2C_DATA_ADDR = 0x3c
+        self.I2C_DATA_ADDR = 0x38
         self.bus = bus
         self.COMP_PIN = pin
 
@@ -17,6 +17,7 @@ class Adc():
         GPIO.setwarnings (False) # This is the usaul GPIO jazz
         GPIO.setmode (GPIO.BCM)
         GPIO.setup (self.COMP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        #GPIO.output(18,GPIO.LOW)
 
     def update (self, value):
         try:
@@ -62,11 +63,8 @@ def main ():
     while True:
         #value = adc.approx ()
         value = adc.ramp()
-        print (value)
-
-        if value > 160:
-            print (value)
-
+        print ('{:08b}'.format (value))
+        print(value)
         time.sleep (0.001)
 
 if __name__ == "__main__":
