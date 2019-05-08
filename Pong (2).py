@@ -4,11 +4,8 @@ import time
 import random
 import math
 import RPi.GPIO as GPIO
+import smbus
 from serial import Serial
-
-#so that testing can be done on windows:
-#from colorama import init
-#init()
 
 #Constants:
 
@@ -26,7 +23,8 @@ const_bat_offset = 4
 const_score_offset = 8
 ####
 
-
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
 ##GPIO tests##
 """
 GPIO.setmode(GPIO.BCM)
@@ -190,8 +188,8 @@ class GameState:
 		string = str(chr(27)) + "["+str(x)+";"+str(y)+"H" + col + " "
 		self._buffer += string
 
-		#sys.stdout.write(string)
-		#sys.stdout.flush()
+		sys.stdout.write(string)
+		sys.stdout.flush()
 
 	def update_net(self, y):
 		#Draw net:
@@ -322,31 +320,46 @@ class Ball:
 		self._x = x
 		self._y = y
 
+		self._serving = 0
 		#To control the ball speed, each step the ball will increment its update date count, once update count reaches
 		#the desired update speed, the ball will be allowed to move 1 step.
 		self._updateSpeed = update_speed
-		#self._updateCount = 0
+		self._updateCount = 0
 
 	def move(self, game, prevX, prevY):
-		#self._updateCount += 1
-		#if(self._updateCount==self._updateSpeed):
-		#	self._updateCount = 0
+		self._updateCount += 1
+		if(self._updateCount>=self._updateSpeed):
+			self._updateCount = 0
 
-		self._x += self._yspeed
-		self._y += self._xspeed
+			self._x += self._yspeed
+			self._y += self._xspeed
 
-		arr = [self._x, self._y, prevX, prevY]
-		game.write_change("Ball", arr)
+			arr = [self._x, self._y, prevX, prevY]
+			game.write_change("Ball", arr)
 
 	def bounce(self, direction):
+		self._updateSpeed = random.randint(1,10)
+
 		if(direction=="v"):
 			self._yspeed *= -1
 		elif(direction=="h"):
 			self._xspeed *= -1
 
-	def reset(self):
+	def reset(self, side):
 		self._x = 10
 		self._y = 40
+
+	def get_x(self):
+		return self._x
+	def get_y(self):
+		return self._y
+
+	def set_x(self,x):
+		self._x = x
+	def set_y(self,y):
+		self._y = y
+	def set_serving(self, val):
+		self._serving = val
 
 	def place_meeting(self, y, x, game, bat1, bat2):
 		"""
@@ -360,21 +373,27 @@ class Ball:
 		#Wait for the bat to be allowed to update before doing collision checks:
 		#if(self._updateCount > 0):
 		#	return
-
+		if(self._serving>0):
+			if(self._serving == 1):
+				self.set_x(bat1.get_x())
+				self.set_y(bat1.get_y()+1)
+			else:
+				self.set_x(bat2.get_x())
+				self.set_y(bat2.get_y()-1)
 
 		#Walls or bats:
 		if(y == 1):
 			self.bounce("v")
-			return
 		if(y == const_room_height):
 			self.bounce("v")
-			return
 		if(x <= const_bat_offset+1):
 			if(x == const_bat_offset+1 and (y<=bat1._y+bat1._size and y>=bat1._y)):
 				self.bounce("h")
 				return
 			elif(x==1):
-				self.reset()
+				self.reset(0)
+				self._serving = 1
+
 				bat2.update_score()
 				game.write_change("Score", [2, bat2._score])
 				return
@@ -383,7 +402,9 @@ class Ball:
 				self.bounce("h")
 				return
 			elif(x == const_room_width-1):
-				self.reset()
+				self.reset(1)
+				self._serving = 2
+
 				bat1.update_score()
 				game.write_change("Score", [1, bat1._score])
 				return
@@ -406,6 +427,8 @@ class Player:
 
 		#temp
 		self.dir = 1
+	def get_score(self):
+		return self._score
 
 	def update_score(self):
 		self._score += 1
@@ -424,6 +447,46 @@ class Player:
 			self.dir *= -1
 			self._y+=self.dir
 
+class Adc():
+    def __init__(self, bus, pin):
+        self.I2C_DATA_ADDR = 0x3c
+        self.bus = bus
+        self.COMP_PIN = pin
+
+        try:
+            self.bus.write_byte (self.I2C_DATA_ADDR, 0)   # This supposedly clears the port
+        except IOError:
+            print ("Comms err")
+
+
+        GPIO.setwarnings (False) # This is the usaul GPIO jazz
+        GPIO.setmode (GPIO.BCM)
+        GPIO.setup (self.COMP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+    def update (self, value):
+        try:
+            self.bus.write_byte (self.I2C_DATA_ADDR, value)
+        except IOError:
+            print ("Another Comms err")
+
+    def get_comp (self):
+        return GPIO.input (self.COMP_PIN)
+
+    def approx (self):
+        count = 0
+        new = 0
+        self.update (0)
+
+        for i in range (0, 8):
+            new = count | 2 ** (7 - i) # Performs bitwise OR to go from top down if needed
+
+            self.update (new)
+            if self.get_comp () == False:
+                count = new
+
+        return count
+
+
 def LED_output(port):
 	ports = {
 		1: 7,
@@ -437,29 +500,56 @@ def LED_output(port):
 	}
 	GPIO.setup(ports[port],GPIO.OUT)
 	GPIO.output(ports[port],GPIO.HIGH)
+	time.sleep(0.1)
+	GPIO.output(ports[port],GPIO.LOW)
 
-
-ball = Ball(-1, 1, 10, 40, 2)
+ball = Ball(-1, 1, 10, 40, 10)
 bat1 = Player(1, 8, 4, const_bat_offset+1)
 bat2 = Player(2, 8, 4, const_bat_offset+1)
 
 game = GameState(const_room_height, const_room_width, const_net_x, const_update_speed, const_back_col, const_net_col, const_ball_col, const_bat_col, const_number_col)
-while(True):
-	prevX = ball._x
-	prevY = ball._y
-	ball.place_meeting(ball._x, ball._y, game, bat1, bat2)
-	ball.move(game, prevX, prevY)
 
-	bat1.move(8000, game)
-	bat2.move(9000, game)
-	game.update_image(bat1._score, bat2._score)
+def main ():
+	bus = smbus.SMBus (1)
+	time.sleep (1)
+	adc = Adc (bus, 18)
 
+	while(True):
+		value = adc.approx()
+		print (value)
 
-	LED_output(ball.get_relative_pos())
+		if value > 160:
+			print (value)
 
+		time.sleep (0.001)
 
-	serialPort.write(game._buffer)
-	game._buffer = ""
-	#time.sleep(0.1)
+		#Moving the ball, checking for collisions
+		prevX = ball.get_x()
+		prevY = ball.get_y()
+		ball.place_meeting(ball.get_x(), ball.get_y(), game, bat1, bat2)
+		ball.move(game, prevX, prevY)
+
+		#if(something):
+		#ball.
+
+		#Move each bat individually
+		bat1.move(8000, game)
+		bat2.move(9000, game)
+
+		#Update the game image. Feeding both bats scores into the function so that correct score can be written
+		game.update_image(bat1.get_score(), bat2.get_score())
+
+		#LED output
+		LED_output(ball.get_relative_pos())
+
+		serialPort.write(game._buffer)
+		game._buffer = ""
+		#time.sleep(0.1)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
 
 serialPort.close()

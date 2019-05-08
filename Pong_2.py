@@ -25,70 +25,7 @@ const_score_offset = 8
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
-##GPIO tests##
-"""
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
 
-i=0
-
-i+=1
-print(i)
-GPIO.setup(7,GPIO.OUT)#LED 1
-GPIO.output(7,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(7,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(12,GPIO.OUT)#LED 3
-GPIO.output(12,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(12,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(13,GPIO.OUT)#LED 4
-GPIO.output(13,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(13,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(16,GPIO.OUT)#LED 5
-GPIO.output(16,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(16,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(19,GPIO.OUT)#LED 6
-GPIO.output(19,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(19,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(26,GPIO.OUT)#LED 8
-GPIO.output(26,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(26,GPIO.LOW)
-time.sleep(0.5)
-
-for j in range(3, 40):
-	if(j==28 or j==29 or j==32 or j==33 or j==35 or j==36 or j==37 or j==38 or j==40):
-		print(j)
-		GPIO.setup(j,GPIO.OUT)#LED 8
-		GPIO.output(j,GPIO.HIGH)
-		time.sleep(0.5)
-		GPIO.output(j,GPIO.LOW)
-		time.sleep(0.5)
-"""
 
 
 serialPort = Serial("/dev/ttyAMA0", 9600)
@@ -337,13 +274,10 @@ class Ball:
 			arr = [self._x, self._y, prevX, prevY]
 			game.write_change("Ball", arr)
 
-	def bounce(self, direction):
+	def bounce(self, xspd, yspd):
 		self._updateSpeed = random.randint(1,10)
-
-		if(direction=="v"):
-			self._yspeed *= -1
-		elif(direction=="h"):
-			self._xspeed *= -1
+		self._yspeed = yspd
+		self._xspeed = xspd
 
 	def reset(self):
 		self._x = 10
@@ -371,24 +305,30 @@ class Ball:
 		Intersecting the net
 		"""
 		#Wait for the bat to be allowed to update before doing collision checks:
-		#if(self._updateCount > 0):
-		#	return
+		if(self._updateCount > 0):
+			return
 		if(self._serving>0):
 			if(self._serving == 1):
 				self.set_x(bat1.get_y())
-				self.set_y(bat1.get_y()+1)
+				self.set_y(bat1.get_x()+1)
 			else:
 				self.set_x(bat2.get_y())
-				self.set_y(bat2.-1)
+				self.set_y(bat2.get_x()-1)
 
 		#Walls or bats:
 		if(y == 1):
-			self.bounce("v")
+			self.bounce(self._xspeed, self._yspeed*-1)
 		if(y == const_room_height):
-			self.bounce("v")
+			self.bounce(self._xspeed, self._yspeed*-1)
 		if(x <= const_bat_offset+1):
 			if(x == const_bat_offset+1 and (y<=bat1._y+bat1._size and y>=bat1._y)):
-				self.bounce("h")
+				batYoffset = bat1.y-y
+				if(batYoffset == 0):
+					self.bounce(self._xspeed*-1, -1)
+				if(batYoffset == 1):
+					self.bounce(self._xspeed*-1, 0)
+				if(batYoffset == 2):
+					self.bounce(self._xspeed*-1, 1)
 				return
 			elif(x==1):
 				self._serving = 1
@@ -398,7 +338,13 @@ class Ball:
 				return
 		elif(x >= const_room_width-const_bat_offset-1):
 			if(x == const_room_width-const_bat_offset-1 and (y<=bat2._y+bat2._size and y>=bat2._y)):
-				self.bounce("h")
+				batYoffset = bat1.y-y
+				if(batYoffset == 0):
+					self.bounce(self._xspeed*-1, -1)
+				if(batYoffset == 1):
+					self.bounce(self._xspeed*-1, 0)
+				if(batYoffset == 2):
+					self.bounce(self._xspeed*-1, 1)
 				return
 			elif(x == const_room_width-1):
 				self._serving = 2
@@ -423,12 +369,18 @@ class Player:
 
 		self._score = 0
 
+		if(ID == 1):
+			self._x = offset
+		else:
+			self._x = const_room_width-offset
 		#temp
 		self.dir = 1
 	def get_score(self):
 		return self._score
 	def get_y(self):
 		return self._y
+	def get_x(self):
+		return self._x
 
 	def update_score(self):
 		self._score += 1
@@ -505,8 +457,8 @@ def LED_output(port):
 	GPIO.output(ports[port],GPIO.LOW)
 
 ball = Ball(-1, 1, 10, 40, 1)
-bat1 = Player(1, 8, 4, const_bat_offset+1)
-bat2 = Player(2, 8, 4, const_bat_offset+1)
+bat1 = Player(1, 8, 3, const_bat_offset+1)
+bat2 = Player(2, 8, 3, const_bat_offset+1)
 
 game = GameState(const_room_height, const_room_width, const_net_x, const_update_speed, const_back_col, const_net_col, const_ball_col, const_bat_col, const_number_col)
 
