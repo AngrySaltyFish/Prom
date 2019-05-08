@@ -25,71 +25,6 @@ const_score_offset = 8
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
-##GPIO tests##
-"""
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-
-i=0
-
-i+=1
-print(i)
-GPIO.setup(7,GPIO.OUT)#LED 1
-GPIO.output(7,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(7,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(12,GPIO.OUT)#LED 3
-GPIO.output(12,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(12,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(13,GPIO.OUT)#LED 4
-GPIO.output(13,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(13,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(16,GPIO.OUT)#LED 5
-GPIO.output(16,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(16,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(19,GPIO.OUT)#LED 6
-GPIO.output(19,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(19,GPIO.LOW)
-time.sleep(0.5)
-
-i+=1
-print(i)
-GPIO.setup(26,GPIO.OUT)#LED 8
-GPIO.output(26,GPIO.HIGH)
-time.sleep(0.5)
-GPIO.output(26,GPIO.LOW)
-time.sleep(0.5)
-
-for j in range(3, 40):
-	if(j==28 or j==29 or j==32 or j==33 or j==35 or j==36 or j==37 or j==38 or j==40):
-		print(j)
-		GPIO.setup(j,GPIO.OUT)#LED 8
-		GPIO.output(j,GPIO.HIGH)
-		time.sleep(0.5)
-		GPIO.output(j,GPIO.LOW)
-		time.sleep(0.5)
-"""
-
 
 serialPort = Serial("/dev/ttyAMA0", 9600)
 
@@ -328,7 +263,7 @@ class Ball:
 
 	def move(self, game, prevX, prevY):
 		self._updateCount += 1
-		if(self._updateCount>=self._updateSpeed):
+		if(self._updateCount>=self._updateSpeed and self._serving == 0):
 			self._updateCount = 0
 
 			self._x += self._yspeed
@@ -371,8 +306,9 @@ class Ball:
 		Intersecting the net
 		"""
 		#Wait for the bat to be allowed to update before doing collision checks:
-		#if(self._updateCount > 0):
-		#	return
+		if(self._updateCount > 0):
+			return
+
 		if(self._serving>0):
 			if(self._serving == 1):
 				self.set_x(bat1.get_x())
@@ -380,35 +316,35 @@ class Ball:
 			else:
 				self.set_x(bat2.get_x())
 				self.set_y(bat2.get_y()-1)
+		else:
+			#Walls or bats:
+			if(y == 1):
+				self.bounce("v")
+			if(y == const_room_height):
+				self.bounce("v")
+			if(x <= const_bat_offset+1):
+				if(x == const_bat_offset+1 and (y<=bat1._y+bat1._size and y>=bat1._y)):
+					self.bounce("h")
+					return
+				elif(x==1):
+					self._serving = 1
 
-		#Walls or bats:
-		if(y == 1):
-			self.bounce("v")
-		if(y == const_room_height):
-			self.bounce("v")
-		if(x <= const_bat_offset+1):
-			if(x == const_bat_offset+1 and (y<=bat1._y+bat1._size and y>=bat1._y)):
-				self.bounce("h")
-				return
-			elif(x==1):
-				self._serving = 1
+					bat2.update_score()
+					game.write_change("Score", [2, bat2._score])
+					return
+			elif(x >= const_room_width-const_bat_offset-1):
+				if(x == const_room_width-const_bat_offset-1 and (y<=bat2._y+bat2._size and y>=bat2._y)):
+					self.bounce("h")
+					return
+				elif(x == const_room_width-1):
+					self._serving = 2
 
-				bat2.update_score()
-				game.write_change("Score", [2, bat2._score])
-				return
-		elif(x >= const_room_width-const_bat_offset-1):
-			if(x == const_room_width-const_bat_offset-1 and (y<=bat2._y+bat2._size and y>=bat2._y)):
-				self.bounce("h")
-				return
-			elif(x == const_room_width-1):
-				self._serving = 2
-
-				bat1.update_score()
-				game.write_change("Score", [1, bat1._score])
-				return
-		#Net:
-		if(x == const_net_x-1 or x == const_net_x+1):
-			game.write_change("Net", [y])
+					bat1.update_score()
+					game.write_change("Score", [1, bat1._score])
+					return
+			#Net:
+			if(x == const_net_x-1 or x == const_net_x+1):
+				game.write_change("Net", [y])
 
 	def get_relative_pos(self):
 		return round(float(self._y) / float(const_room_width)*8)
@@ -422,11 +358,19 @@ class Player:
 		self._offset = offset
 
 		self._score = 0
+		if(ID == 1):
+			self._x = const_bat_offset
+		else:
+			self._x = const_room_width-const_bat_offset
 
 		#temp
 		self.dir = 1
 	def get_score(self):
 		return self._score
+	def get_x(self):
+		return self._x
+	def get_y(self):
+		return self._y
 
 	def update_score(self):
 		self._score += 1
@@ -435,7 +379,6 @@ class Player:
 
 	def move(self, inp_port, game):
 		#direction = 1 #Will work out by the input from the controllers
-
 		if(const_room_height+2 > self._y+self._size and self._y >= 0):
 			self._y+=self.dir
 			#time.sleep(0.1)
