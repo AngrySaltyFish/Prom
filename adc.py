@@ -1,4 +1,4 @@
-# ADC TEST CODE
+# -*- coding: utf-8 -*-
 # TEST 1: to check if the ADC's I2C interface is working, at 
 # the command line type : sudo i2cdetect -y 1 
 # This will scan the I2C bus, returning active addresses. If 
@@ -15,12 +15,21 @@ import smbus
 import time
 I2CADDR = 0x21 
 CMD_CODE = 0b01000000
-# identify this from the data sheet
 bus = smbus.SMBus(1)
 bus.write_byte( I2CADDR, CMD_CODE )
-tmp = bin(bus.read_word_data( I2CADDR, 0x00 ))
+tmp = bus.read_word_data( I2CADDR, 0x00 )
 
+#high_byte = (tmp & (1 << ((2) * 8)) - 1) >> (1 * 8)
+#low_byte = (tmp & (1 <<8) - 1)
+high_byte = tmp << 8
+low_byte = tmp >> 8
 
-value = tmp[10:] + tmp[2:10]
+value = high_byte +  low_byte
 
-print (int(value))
+value = value & 0000111111111111
+
+print (bin (tmp))
+print (bin(low_byte))
+print (bin(high_byte))
+print (bin(value))
+
