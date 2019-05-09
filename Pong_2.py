@@ -28,7 +28,7 @@ GPIO.setwarnings(False)
 
 
 
-serialPort = Serial("/dev/ttyAMA0", 9600)
+serialPort = Serial("/dev/ttyAMA0", 115200)
 
 if (serialPort.isOpen() == False):
 	serialPort.open()
@@ -69,40 +69,27 @@ class GameState:
 			"9": ["111","101","111","001","001"]
 		}
 
-		#Coordinate System#
-		self._display = [[0 for i in range(room_height)] for j in range(room_width)]
-		self._displayVals = {
-			0: self._backCol,
-			1: self._netCol,
-			2: self._ballCol,
-			3: self._batCol,
-			4: self._numCol
-		}
-		self._displayCols = {
-			self._backCol: 0,
-			self._netCol: 1,
-			self._ballCol: 2,
-			self._batCol: 3,
-			self._numCol: 4
-		}
 
 		#Create a dictionary that will hold any positional changes of the objects, e.g. the bats or ball
 		self._change = {
 			"Ball": [],
 			"Net": [],
 			"Score": [],
-			"Player1": [],
-			"Player2": []
+			1: [],
+			2: []
 		}
 
 		####Initially create game display:####
-		sys.stdout.write(chr(27) + "[2J")
+		self._buffer += str(chr(27)) + "[2J" #Clear the console
+		self._buffer += str(chr(27)) + "[?25l"
+
 		#Draw background:
 		for i in range(self._height+1):
 			for j in range(self._width):
 				self.write(i, j, self._backCol + " ")
-			sys.stdout.write(str(chr(27)) + "[0m")	#Prints new line
+			#sys.stdout.write(str(chr(27)) + "[0m")	#Prints new line
 			self._buffer += str(chr(27)) + "[0m"
+
 
 
 		####DRAW SCORE####
@@ -125,13 +112,13 @@ class GameState:
 		string = str(chr(27)) + "["+str(x)+";"+str(y)+"H" + col + " "
 		self._buffer += string
 
-		sys.stdout.write(string)
-		sys.stdout.flush()
+		#sys.stdout.write(string)
+		#sys.stdout.flush()
 
 	def update_net(self, y):
 		#Draw net:
-		if(math.floor((y+1)/2) % 2 == 0):
-			self.write(y+1, const_net_x, const_net_col)
+		if(math.floor((y)/2) % 2 == 0):
+			self.write(y, const_net_x, const_net_col)
 
 	def update_score(self, ID, score):
 		y=1
@@ -164,7 +151,7 @@ class GameState:
 
 	def update_image(self, bat1Score, bat2Score):
 		#Sleep for update speed:
-		time.sleep(self._updateSpeed)
+		#time.sleep(self._updateSpeed)
 
 		#Update sequence is least important(lowest depth) to most, e.g. net first then ball, this way
 		#the ball will be drawn over the net.
@@ -173,6 +160,7 @@ class GameState:
 		arr = self._change["Score"]
 
 		if(arr):
+			print("SCORE IS BEING UPDATED")
 			self.update_score(arr[0], arr[1])
 			self._change["Score"] = []
 
@@ -223,32 +211,29 @@ class GameState:
 		####Update bat1####
 		arr = self._change[1]
 		if(arr):
-			y = arr[0]
-			direction = arr[1]
+			y = int(arr[0])
+			prevY = int(arr[1])
 			size = arr[2]
-
-			for i in range(size):
-				self.write(y+i-direction, const_bat_offset, self._batCol)
-
-			self.write(y-1, const_bat_offset, self._backCol)
-			self.write(y+size, const_bat_offset, self._backCol)
+			for i in range(const_room_height-prevY, const_room_height-prevY+size):
+				self.write(i, const_bat_offset, self._backCol)
+			for i in range(const_room_height-y, const_room_height-y+size):
+				self.write(i, const_bat_offset, self._batCol)
 
 			self._change[1] = []
 		####
 		####Update bat2####
 		arr = self._change[2]
 		if(arr):
-			y = arr[0]
-			direction = arr[1]
+			y = int(arr[0])
+			prevY = int(arr[1])
 			size = arr[2]
-
-			for i in range(size):
-				self.write(y+i-direction, self._width-const_bat_offset, self._batCol)
-
-			self.write(y-1, self._width-const_bat_offset, self._backCol)
-			self.write(y+size, self._width-const_bat_offset, self._backCol)
+			for i in range(const_room_height-prevY, const_room_height-prevY+size):
+				self.write(i, self._width-const_bat_offset, self._backCol)
+			for i in range(const_room_height-y, const_room_height-y+size):
+				self.write(i, self._width-const_bat_offset, self._batCol)
 
 			self._change[2] = []
+		####
 
 class Ball:
 	def __init__(self, xspeed, yspeed, x, y, update_speed):
@@ -275,13 +260,19 @@ class Ball:
 			game.write_change("Ball", arr)
 
 	def bounce(self, xspd, yspd):
-		self._updateSpeed = random.randint(1,10)
 		self._yspeed = yspd
 		self._xspeed = xspd
 
 	def reset(self):
+		prevX = self._x
+		prevY = self._y
 		self._x = 10
 		self._y = 40
+		self._updateSpeed = 2
+		self._yspeed = random.choice([-1,1])
+
+		arr = [self._x, self._y, prevX, prevY]
+		game.write_change("Ball", arr)
 
 	def get_x(self):
 		return self._x
@@ -290,8 +281,12 @@ class Ball:
 
 	def set_x(self,x):
 		self._x = x
+
 	def set_y(self,y):
 		self._y = y
+		arr = [self._x, self._y, prevX, prevY]
+		game.write_change("Ball", arr)
+
 	def set_serving(self, val):
 		self._serving = val
 
@@ -307,22 +302,29 @@ class Ball:
 		#Wait for the bat to be allowed to update before doing collision checks:
 		if(self._updateCount > 0):
 			return
+		"""
 		if(self._serving>0):
 			if(self._serving == 1):
-				self.set_x(bat1.get_y())
+				self.set_x(const_room_height-bat1.get_y()+2)
 				self.set_y(bat1.get_x()+1)
 			else:
-				self.set_x(bat2.get_y())
+				self.set_x(const_room_height-bat2.get_y()+2)
 				self.set_y(bat2.get_x()-1)
-
+		"""
+		#y = const_room_height-y
 		#Walls or bats:
-		if(y == 1):
+
+		bally = const_room_height-y
+
+		if(bally == 0 or bally == const_room_height-1):
 			self.bounce(self._xspeed, self._yspeed*-1)
-		if(y == const_room_height):
-			self.bounce(self._xspeed, self._yspeed*-1)
+
 		if(x <= const_bat_offset+1):
-			if(x == const_bat_offset+1 and (y<=bat1._y+bat1._size and y>=bat1._y)):
-				batYoffset = bat1.y-y
+			if(x == const_bat_offset+1 and (bally>=bat1._y-bat1._size and bally<=bat1._y)):
+				self._updateSpeed = random.randint(1,3)
+				batYoffset = bat1._y-bally
+				print("BAT OFFSET:" + str(batYoffset))
+
 				if(batYoffset == 0):
 					self.bounce(self._xspeed*-1, -1)
 				if(batYoffset == 1):
@@ -332,13 +334,15 @@ class Ball:
 				return
 			elif(x==1):
 				self._serving = 1
-
+				ball.reset()
 				bat2.update_score()
 				game.write_change("Score", [2, bat2._score])
 				return
 		elif(x >= const_room_width-const_bat_offset-1):
-			if(x == const_room_width-const_bat_offset-1 and (y<=bat2._y+bat2._size and y>=bat2._y)):
-				batYoffset = bat1.y-y
+			if(x == const_room_width-const_bat_offset-1 and (bally>=bat2._y-bat2._size and bally<=bat2._y)):
+				self._updateSpeed = random.randint(1,3)
+
+				batYoffset = bat2._y-bally
 				if(batYoffset == 0):
 					self.bounce(self._xspeed*-1, -1)
 				if(batYoffset == 1):
@@ -348,16 +352,17 @@ class Ball:
 				return
 			elif(x == const_room_width-1):
 				self._serving = 2
-
+				ball.reset()
 				bat1.update_score()
 				game.write_change("Score", [1, bat1._score])
 				return
 		#Net:
-		if(x == const_net_x-1 or x == const_net_x+1):
+		if(x == const_net_x):
+			print("NET CHANGE WRITTEN")
 			game.write_change("Net", [y])
 
 	def get_relative_pos(self):
-		return round(float(self._y) / float(const_room_width)*8)
+		return round(float(self.get_y()) / float(const_room_width)*8)
 
 
 class Player:
@@ -387,94 +392,104 @@ class Player:
 		if(self._score>9):
 			self._score = 0
 
-	def move(self, inp_port, game):
+	def move(self, pos, prevY, game):
 		#direction = 1 #Will work out by the input from the controllers
-
-		if(const_room_height+2 > self._y+self._size and self._y >= 0):
-			self._y+=self.dir
-			#time.sleep(0.1)
-			arr = [self._y, self.dir, self._size]
-			game.write_change(self._ID, arr)
-		else:
-			self.dir *= -1
-			self._y+=self.dir
+		self._y = pos
+		arr = [pos, prevY, self._size]
+		game.write_change(self._ID, arr)
 
 class Adc():
-    def __init__(self, bus, pin):
-        self.I2C_DATA_ADDR = 0x3c
-        self.bus = bus
-        self.COMP_PIN = pin
+	def __init__(self, bus, pin):
+		self.I2C_DATA_ADDR = 0x38
+		self.I2C_DATA_ADDR2 = 0x21
+		self.bus = bus
+		self.COMP_PIN = pin
 
-        try:
-            self.bus.write_byte (self.I2C_DATA_ADDR, 0)   # This supposedly clears the port
-        except IOError:
-            print ("Comms err")
+		try:
+			self.bus.write_byte (self.I2C_DATA_ADDR, 0) # This supposedly clears the port
+			#self.bus.write_byte (self.I2C_DATA_ADDR2, 0)
+		except IOError:
+			print ("Comms err")
+		GPIO.setwarnings (False) # This is the usaul GPIO jazz
+		GPIO.setmode (GPIO.BCM)
+		GPIO.setup (self.COMP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
+	def update (self, value):
+		try:
+			self.bus.write_byte (self.I2C_DATA_ADDR, value)
+		except IOError:
+			print ("Another Comms err")
 
-        GPIO.setwarnings (False) # This is the usaul GPIO jazz
-        GPIO.setmode (GPIO.BCM)
-        GPIO.setup (self.COMP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	def get_comp (self):
+        	return GPIO.input (self.COMP_PIN)
 
-    def update (self, value):
-        try:
-            self.bus.write_byte (self.I2C_DATA_ADDR, value)
-        except IOError:
-            print ("Another Comms err")
+	def integrated (self):
+		I2CADDR = 0x21
+		CMD_CODE = 0b01000000
+		bus = smbus.SMBus(1)
+		bus.write_byte( I2CADDR, CMD_CODE )
+		tmp = bus.read_word_data( I2CADDR, 0x00 )
 
-    def get_comp (self):
-        return GPIO.input (self.COMP_PIN)
+		high_byte = (tmp&0b0000000011111111) << 8
+		low_byte = tmp >> 8
 
-    def approx (self):
-        count = 0
-        new = 0
-        self.update (0)
+		value = (high_byte + low_byte) & 0b0000111111111111
+		return(value)
 
-        for i in range (0, 8):
-            new = count | 2 ** (7 - i) # Performs bitwise OR to go from top down if needed
+	def approx (self):
+        	count = 0
+        	new = 0
+        	self.update (0)
 
-            self.update (new)
-            if self.get_comp () == False:
-                count = new
+        	for i in range (0, 8):
+            		new = count | 2 ** (7 - i) # Performs bitwise OR to go from top down if needed
+			self.update (new)
+			if self.get_comp () == False:
+				count = new
+		return count
 
-        return count
-
-
-def LED_output(port):
+def LED_output(port, prev_port):
 	ports = {
-		0: 7,
-		1: 7,
+		0: 5,
+		1: 6,
 		2: 12,
-		3: 12,
-		4: 13,
-		5: 16,
-		6: 19,
-		7: 19,
+		3: 13,
+		4: 16,
+		5: 19,
+		6: 20,
+		7: 26,
 		8: 26
 	}
+
 	GPIO.setup(ports[port],GPIO.OUT)
 	GPIO.output(ports[port],GPIO.HIGH)
-	time.sleep(0.1)
-	GPIO.output(ports[port],GPIO.LOW)
+	if(prev_port != None and prev_port != port):
+		GPIO.output(ports[prev_port],GPIO.LOW)
+
+
+begin = time.time()
+game = GameState(const_room_height, const_room_width, const_net_x, const_update_speed, const_back_col, const_net_col, const_ball_col, const_bat_col, const_number_col)
+end = time.time()
+print("Setup time: " + str(end-begin))
 
 ball = Ball(-1, 1, 10, 40, 1)
 bat1 = Player(1, 8, 3, const_bat_offset+1)
 bat2 = Player(2, 8, 3, const_bat_offset+1)
-
-game = GameState(const_room_height, const_room_width, const_net_x, const_update_speed, const_back_col, const_net_col, const_ball_col, const_bat_col, const_number_col)
 
 def main ():
 	bus = smbus.SMBus (1)
 	time.sleep (1)
 	adc = Adc (bus, 18)
 
+	prev_pos_bat1 = 0
+	prev_pos_bat2 = 0
+	current_pos_bat1 = 0
+	current_pos_bat2 = 0
+	prev_port = None
 	while(True):
-		value = adc.approx()
-		print (value)
-
-		if value > 160:
-			print (value)
-
-		time.sleep (0.001)
+		rawbat1 = adc.approx() #value between 0-182
+		rawbat2 = adc.integrated() #value between 0-3670
+		time.sleep (0.02)
 
 		#Moving the ball, checking for collisions
 		prevX = ball.get_x()
@@ -485,15 +500,28 @@ def main ():
 		#if(something):
 		#ball.
 
+		#0-21
+		max_custom_adc=182
+		prev_pos_bat1 = current_pos_bat1
+		current_pos_bat1=int((float(rawbat1)/float(max_custom_adc))*22 + 2)
+
+		print(rawbat2)
+		max_integrated=3750
+		prev_pos_bat2 = current_pos_bat2
+		current_pos_bat2=int((float(rawbat2)/float(max_integrated))*22 + 2)
+
 		#Move each bat individually
-		bat1.move(8000, game)
-		bat2.move(9000, game)
+		if(current_pos_bat1 != prev_pos_bat1):
+			bat1.move(current_pos_bat1, bat1.get_y(), game)
+		if(current_pos_bat2 != prev_pos_bat2):
+			bat2.move(current_pos_bat2, bat2.get_y(), game)
 
 		#Update the game image. Feeding both bats scores into the function so that correct score can be written
 		game.update_image(bat1.get_score(), bat2.get_score())
 
 		#LED output
-		LED_output(ball.get_relative_pos())
+		LED_output(ball.get_relative_pos(), prev_port)
+		prev_port = ball.get_relative_pos()
 
 		serialPort.write(game._buffer.encode("ascii"))
 		game._buffer = ""
