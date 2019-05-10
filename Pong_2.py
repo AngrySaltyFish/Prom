@@ -6,27 +6,14 @@ import math
 import RPi.GPIO as GPIO
 import smbus
 from serial import Serial
-
-#Constants:
-
-const_room_width = 80
-const_room_height = 24
-const_net_x = 40
-const_update_speed = 0.04
-const_back_col = str(chr(27)) + "[47m"
-const_net_col = str(chr(27)) + "[44m"
-const_ball_col = str(chr(27)) + "[41m"
-const_bat_col = str(chr(27)) + "[40m"
-const_number_col = str(chr(27)) + "[45m"
-
-const_bat_offset = 4
-const_score_offset = 8
+from Constants import *
 ####
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
-
+GPIO.setup(9, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(10, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 serialPort = Serial("/dev/ttyAMA0", 115200)
 
@@ -117,12 +104,16 @@ class GameState:
 
 	def update_net(self, y):
 		#Draw net:
-		if(math.floor((y)/2) % 2 == 0):
-			self.write(y, const_net_x, const_net_col)
+		for i in range(1, const_room_height+1):
+			if(math.floor((i+1)/2) % 2 == 0):
+				self.write(i, const_net_x, const_net_col)
+		#if(math.floor((y+1)/2) % 2 == 0):
+		#	self.write(y, const_net_x, const_net_col)
 
 	def update_score(self, ID, score):
 		y=1
 		x=0
+		if (score > 9): score = 0
 
 		if(ID == 1):
 			#Draw number:
@@ -160,7 +151,6 @@ class GameState:
 		arr = self._change["Score"]
 
 		if(arr):
-			print("SCORE IS BEING UPDATED")
 			self.update_score(arr[0], arr[1])
 			self._change["Score"] = []
 
@@ -175,8 +165,6 @@ class GameState:
 			px = arr[2]
 			py = arr[3]
 
-			#Move cursor to new coords:
-			self.write(x, y, self._ballCol)
 			#Move cursor to old coords:
 			sOff1 = self._netX - const_score_offset - 4
 			sOff2 = self._netX + const_score_offset
@@ -198,6 +186,10 @@ class GameState:
 			else:
 				self.write(px, py, self._backCol)
 			#Reset the ball changes:
+
+			#Move cursor to new coords:
+			self.write(x, y, self._ballCol)
+
 			self._change["Ball"] = []
 		####
 
@@ -241,16 +233,17 @@ class Ball:
 		self._yspeed = yspeed
 		self._x = x
 		self._y = y
-
-		self._serving = 0
+		self._servingplayer = random.choice([1,2])
+		self._serving = self._servingplayer
 		#To control the ball speed, each step the ball will increment its update date count, once update count reaches
 		#the desired update speed, the ball will be allowed to move 1 step.
 		self._updateSpeed = update_speed
 		self._updateCount = 0
+		self._serves = 5
 
 	def move(self, game, prevX, prevY):
 		self._updateCount += 1
-		if(self._updateCount>=self._updateSpeed):
+		if(self._updateCount>=self._updateSpeed and self._serving == 0):
 			self._updateCount = 0
 
 			self._x += self._yspeed
@@ -279,16 +272,25 @@ class Ball:
 	def get_y(self):
 		return self._y
 
-	def set_x(self,x):
+	def set_xy(self,x, y):
+		prevX = self._x
 		self._x = x
-
-	def set_y(self,y):
+		prevY = self._y
 		self._y = y
+
 		arr = [self._x, self._y, prevX, prevY]
 		game.write_change("Ball", arr)
 
 	def set_serving(self, val):
 		self._serving = val
+
+	def serve(self, bat):
+		if(self._serving == 1):
+			self.bounce(1, 0)
+			self._serving = 0
+		elif(self._serving == 2):
+			self.bounce(-1, 0)
+			self._serving = 0
 
 	def place_meeting(self, y, x, game, bat1, bat2):
 		"""
@@ -299,18 +301,25 @@ class Ball:
 
 		Intersecting the net
 		"""
+
+		if(self._serving==1):
+			if(bat1._prevY != bat1.get_y()):
+				self.set_xy(const_room_height-bat1.get_y()+1, bat1.get_x())
+			else:
+				arr = [self._x, self._y, self._x, self._y]
+				game.write_change("Ball", arr)
+
+		elif(self._serving==2):
+			#self.set_x(const_room_height-bat2.get_x()+1)
+			if(bat2._prevY != bat2.get_y()):
+				self.set_xy(const_room_height-bat2.get_y()+1, bat2.get_x())
+			else:
+				arr = [self._x, self._y, self._x, self._y]
+				game.write_change("Ball", arr)
+
 		#Wait for the bat to be allowed to update before doing collision checks:
 		if(self._updateCount > 0):
 			return
-		"""
-		if(self._serving>0):
-			if(self._serving == 1):
-				self.set_x(const_room_height-bat1.get_y()+2)
-				self.set_y(bat1.get_x()+1)
-			else:
-				self.set_x(const_room_height-bat2.get_y()+2)
-				self.set_y(bat2.get_x()-1)
-		"""
 		#y = const_room_height-y
 		#Walls or bats:
 
@@ -323,18 +332,30 @@ class Ball:
 			if(x == const_bat_offset+1 and (bally>=bat1._y-bat1._size and bally<=bat1._y)):
 				self._updateSpeed = random.randint(1,3)
 				batYoffset = bat1._y-bally
-				print("BAT OFFSET:" + str(batYoffset))
-
-				if(batYoffset == 0):
-					self.bounce(self._xspeed*-1, -1)
-				if(batYoffset == 1):
-					self.bounce(self._xspeed*-1, 0)
-				if(batYoffset == 2):
-					self.bounce(self._xspeed*-1, 1)
-				return
+				if(bat1._size==3):
+					if(batYoffset == 0):
+						self.bounce(self._xspeed*-1, -1)
+					if(batYoffset == 1):
+						self.bounce(self._xspeed*-1, 0)
+					if(batYoffset == 2):
+						self.bounce(self._xspeed*-1, 1)
+					return
+				if(bat1._size==6):
+					if(batYoffset == 0 or batYoffset == 1):
+						self.bounce(self._xspeed*-1, -1)
+					if(batYoffset == 2 or batYoffset == 3):
+						self.bounce(self._xspeed*-1, 0)
+					if(batYoffset == 5 or batYoffset == 4):
+						self.bounce(self._xspeed*-1, 1)
+					return
 			elif(x==1):
-				self._serving = 1
-				ball.reset()
+				self._serving = self._servingplayer
+				self._serves -= 1
+				if (self._serves == 0):
+					if (self._servingplayer ==1): self._servingplayer=2
+					elif (self._servingplayer ==2): self._servingplayer=1
+					self._serves=5;
+
 				bat2.update_score()
 				game.write_change("Score", [2, bat2._score])
 				return
@@ -343,22 +364,35 @@ class Ball:
 				self._updateSpeed = random.randint(1,3)
 
 				batYoffset = bat2._y-bally
-				if(batYoffset == 0):
-					self.bounce(self._xspeed*-1, -1)
-				if(batYoffset == 1):
-					self.bounce(self._xspeed*-1, 0)
-				if(batYoffset == 2):
-					self.bounce(self._xspeed*-1, 1)
-				return
+				if(bat2._size==3):
+					if(batYoffset == 0):
+						self.bounce(self._xspeed*-1, -1)
+					if(batYoffset == 1):
+						self.bounce(self._xspeed*-1, 0)
+					if(batYoffset == 2):
+						self.bounce(self._xspeed*-1, 1)
+					return
+				if(bat2._size==6):
+					if(batYoffset == 0 or batYoffset == 1):
+						self.bounce(self._xspeed*-1, -1)
+					if(batYoffset == 2 or batYoffset == 3):
+						self.bounce(self._xspeed*-1, 0)
+					if(batYoffset == 4 or batYoffset == 5):
+						self.bounce(self._xspeed*-1, 1)
+					return
 			elif(x == const_room_width-1):
-				self._serving = 2
-				ball.reset()
+				self._serving = self._servingplayer
+				self._serves -= 1
+				if (self._serves == 0):
+					if (self._servingplayer ==1): self._servingplayer=2
+					elif (self._servingplayer ==2): self._servingplayer=1
+					self._serves=5
+
 				bat1.update_score()
 				game.write_change("Score", [1, bat1._score])
 				return
 		#Net:
 		if(x == const_net_x):
-			print("NET CHANGE WRITTEN")
 			game.write_change("Net", [y])
 
 	def get_relative_pos(self):
@@ -371,8 +405,9 @@ class Player:
 		self._y = y
 		self._size = size
 		self._offset = offset
-
+		self._prevY = y
 		self._score = 0
+		self._serves = 5
 
 		if(ID == 1):
 			self._x = offset
@@ -389,18 +424,17 @@ class Player:
 
 	def update_score(self):
 		self._score += 1
-		if(self._score>9):
-			self._score = 0
 
 	def move(self, pos, prevY, game):
 		#direction = 1 #Will work out by the input from the controllers
+		self._prevY = self._y
 		self._y = pos
 		arr = [pos, prevY, self._size]
 		game.write_change(self._ID, arr)
 
 class Adc():
 	def __init__(self, bus, pin):
-		self.I2C_DATA_ADDR = 0x38
+		self.I2C_DATA_ADDR = 0x3c
 		self.I2C_DATA_ADDR2 = 0x21
 		self.bus = bus
 		self.COMP_PIN = pin
@@ -448,23 +482,42 @@ class Adc():
 				count = new
 		return count
 
-def LED_output(port, prev_port):
+def LED_output(port, prev_port, bus):
+	if(port<0):
+		port = 0
 	ports = {
-		0: 5,
-		1: 6,
-		2: 12,
-		3: 13,
-		4: 16,
-		5: 19,
-		6: 20,
-		7: 26,
-		8: 26
+		0: [5, 1],
+		1: [6, 2],
+		2: [12, 4],
+		3: [13,8],
+		4: [16, 16],
+		5: [19, 32],
+		6: [20, 64],
+		7: [26, 128],
+		8: [26, 128]
 	}
 
-	GPIO.setup(ports[port],GPIO.OUT)
-	GPIO.output(ports[port],GPIO.HIGH)
+	bus.write_byte (0x38, 255-ports[port][1])
+
+	GPIO.setup(ports[port][0],GPIO.OUT)
+	GPIO.output(ports[port][0],GPIO.HIGH)
 	if(prev_port != None and prev_port != port):
-		GPIO.output(ports[prev_port],GPIO.LOW)
+		GPIO.output(ports[prev_port][0],GPIO.LOW)
+
+def button_input(bus):
+	i2cvalue = bus.read_byte(0x3e)
+	b1 = i2cvalue & 0b00001000
+	b2 = i2cvalue & 0b00000100
+	b3 = i2cvalue & 0b00000010
+	b4 = i2cvalue & 0b00000001
+
+	return b1, b2, b3, b4
+
+def diagnosticprint(rawbat1,rawbat2,current_pos_bat1,current_pos_bat2, bus, remainingtime1, remainingtime2): #button states, adc values, bat heights/states
+	rem1_grow, rem1_serve, rem2_grow, rem2_serve = button_input(bus)
+	print(chr(27) + "[2J")
+	print("Ball X = " + str(ball._y) + ", Ball Y = " + str(const_room_height-ball._x) + ", Bat1: ADC: " + str(rawbat1) + " Y: " + str(current_pos_bat1) + " Sze: " + str(bat1._size) + ", Bat2: ADC: " + str(rawbat2) + " Y: " + str(current_pos_bat2) + " Sze: " + str(bat2._size))
+	print("Growplayer1: " + str(rem1_grow) + ", ServePlayer1: " + str(rem1_serve) + ", GrowPlayer2: " + str(rem2_grow) + ", ServePlayer2: " + str(rem2_serve), ", Time Left Player 1: " + str(remainingtime1), ", Time Left Player 2: " + str(remainingtime2))
 
 
 begin = time.time()
@@ -482,11 +535,32 @@ def main ():
 	adc = Adc (bus, 18)
 
 	prev_pos_bat1 = 0
-	prev_pos_bat2 = 0
+	prev_pos_bat2 = 01
 	current_pos_bat1 = 0
 	current_pos_bat2 = 0
 	prev_port = None
+
+
+	grows_player1 = 2
+	grows_player2 = 2
+	growtime1 = 0
+	growtime2 = 0
+
+	button_change_time = 0
+	grow_button_change_time = 0
+	prev_rem2_serve=0
+	prev_rem2_grow=0
+
+	remainingtime1=0
+	remainingtime2=0
 	while(True):
+		if(bat1.get_score() > 9):
+			print("Player 1 Wins!")
+			break
+		if(bat2.get_score() > 9):
+			print("Player 2 Wins!")
+			break
+
 		rawbat1 = adc.approx() #value between 0-182
 		rawbat2 = adc.integrated() #value between 0-3670
 		time.sleep (0.02)
@@ -497,16 +571,65 @@ def main ():
 		ball.place_meeting(ball.get_x(), ball.get_y(), game, bat1, bat2)
 		ball.move(game, prevX, prevY)
 
-		#if(something):
-		#ball.
+		#Get bat buttons
+		bus.write_byte(0x3e, 0x00)
+		rem1_grow, rem1_serve, rem2_grow, rem2_serve = button_input(bus)
+
+		if(rem1_serve and ball._serving == 1):
+			ball.serve(bat1)
+
+		if(rem1_grow and grows_player1 > 0 and bat1._size==3):
+			bat1._size=6
+			grows_player1 -= 1
+			growtime1 = time.time()
+
+			arr = [bat1._y, bat1._y, bat1._size]
+			game.write_change(bat1._ID, arr)
+
+		#debouncing code
+		if(rem2_serve!=prev_rem2_serve):
+			button_change_time += 1
+			if (button_change_time == 5):
+				if(rem2_serve!=0):
+					if(ball._serving == 2):
+						ball.serve(bat2)
+				prev_rem2_serve=rem2_serve
+		if(rem2_serve==prev_rem2_serve):
+			button_change_time=0
+
+		if(rem2_grow!=prev_rem2_grow):
+			grow_button_change_time += 1
+			if (grow_button_change_time == 5):
+				if (rem2_grow and grows_player2 > 0 and bat2._size==3):
+					bat2._size=6
+					grows_player2 -= 1
+					growtime2 = time.time()
+					arr = [bat2._y, bat2._y, bat2._size]
+					game.write_change(bat2._ID, arr)
+				prev_rem2_grow=rem2_grow
+		if(rem2_grow==prev_rem2_grow):
+			grow_button_change_time=0
+
+		if(bat1._size==6):remainingtime1 = 15-(time.time()-growtime1)
+		if(bat2._size==6):remainingtime2 = 15-(time.time()-growtime2)
+
+		if(bat1._size == 6 and time.time()-growtime1 >= 15):
+			bat1._size = 3
+			arr = [bat1._y, bat1._y, bat1._size]
+			game.write_change(bat1._ID, arr)
+
+		if(bat2._size == 6 and time.time()-growtime2 >= 15):
+			bat2._size = 3
+			arr = [bat2._y, bat2._y, bat2._size]
+			game.write_change(bat2._ID, arr)
 
 		#0-21
-		max_custom_adc=182
+		max_custom_adc=const_adc_max1
 		prev_pos_bat1 = current_pos_bat1
 		current_pos_bat1=int((float(rawbat1)/float(max_custom_adc))*22 + 2)
 
-		print(rawbat2)
-		max_integrated=3750
+		#print(rawbat2)
+		max_integrated=const_adc_max2
 		prev_pos_bat2 = current_pos_bat2
 		current_pos_bat2=int((float(rawbat2)/float(max_integrated))*22 + 2)
 
@@ -520,12 +643,14 @@ def main ():
 		game.update_image(bat1.get_score(), bat2.get_score())
 
 		#LED output
-		LED_output(ball.get_relative_pos(), prev_port)
+		LED_output(ball.get_relative_pos(), prev_port, bus)
 		prev_port = ball.get_relative_pos()
 
 		serialPort.write(game._buffer.encode("ascii"))
 		game._buffer = ""
 		#time.sleep(0.1)
+
+		diagnosticprint(rawbat1, rawbat2, current_pos_bat1, current_pos_bat2, bus, remainingtime1, remainingtime2)
 
 if __name__ == "__main__":
     try:
