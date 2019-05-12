@@ -392,7 +392,7 @@ class Ball:
 				game.write_change("Score", [1, bat1._score])
 				return
 		#Net:
-		if(x == const_net_x):
+		if(x >= const_net_x - 1 and x <= const_net_x + 1):
 			game.write_change("Net", [y])
 
 	def get_relative_pos(self):
@@ -553,6 +553,8 @@ def main ():
 
 	remainingtime1=0
 	remainingtime2=0
+
+
 	while(True):
 		if(bat1.get_score() > 9):
 			print("Player 1 Wins!")
@@ -632,6 +634,10 @@ def main ():
 		max_integrated=const_adc_max2
 		prev_pos_bat2 = current_pos_bat2
 		current_pos_bat2=int((float(rawbat2)/float(max_integrated))*22 + 2)
+
+		if(const_noise_removal):
+			current_pos_bat1 = round(current_pos_bat1, -1)
+			current_pos_bat2 = round(current_pos_bat2, -1)
 
 		#Move each bat individually
 		if(current_pos_bat1 != prev_pos_bat1):

@@ -13,3 +13,5 @@ const_bat_offset = 4
 const_score_offset = 8
 const_adc_max1 = 200
 const_adc_max2 = 3800
+
+const_noise_removal = 1
