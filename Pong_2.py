@@ -554,6 +554,8 @@ def main ():
 	remainingtime1=0
 	remainingtime2=0
 
+	prev_raw_bat1 = 0
+	prev_raw_bat2 = 0
 
 	while(True):
 		if(bat1.get_score() > 9):
@@ -634,10 +636,6 @@ def main ():
 		max_integrated=const_adc_max2
 		prev_pos_bat2 = current_pos_bat2
 		current_pos_bat2=int((float(rawbat2)/float(max_integrated))*22 + 2)
-
-		if(const_noise_removal):
-			current_pos_bat1 = round(current_pos_bat1, -1)
-			current_pos_bat2 = round(current_pos_bat2, -1)
 
 		#Move each bat individually
 		if(current_pos_bat1 != prev_pos_bat1):
